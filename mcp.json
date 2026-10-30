@@ -1,0 +1,16 @@
+{
+  "servers": {
+    "mock": {
+      "command": ["python", "mock_mcp_server.py"]
+    },
+    "filesystem": {
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/tmp", "state/artifacts"]
+    },
+    "fetch": {
+      "command": ["npx", "-y", "@modelcontextprotocol/server-fetch"]
+    },
+    "sqlite": {
+      "command": ["npx", "-y", "@modelcontextprotocol/server-sqlite", "state/mem.db"]
+    }
+  }
+}
