@@ -1,0 +1,142 @@
+name: ai-host
+
+on:
+  schedule:
+    - cron: "*/20 * * * *"     # 兜底自愈
+  workflow_dispatch:
+
+concurrency:
+  group: ai-host
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 355
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 缓存（模型 + 浏览器 + 包）
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cache/ms-playwright
+            ~/.cache/pip
+            ~/.cache/huggingface
+            models
+          key: brain-v2-${{ runner.os }}
+
+      - name: 装手脚（有缓存就 30 秒）
+        run: |
+          sudo apt-get -qq update
+          sudo apt-get -qq install -y ffmpeg aria2 jq
+          pip -q install playwright requests beautifulsoup4 lxml yt-dlp llama-cpp-python huggingface-hub
+          python -m playwright install --with-deps chromium
+
+      - name: 拉无审查大脑（首次约 5 分钟，之后走缓存）
+        run: |
+          mkdir -p models
+          if [ ! -f models/dolphin-2.9-llama3-8b.Q4_K_M.gguf ]; then
+            python - <<'EOF'
+          from huggingface_hub import hf_hub_download
+          hf_hub_download(repo_id="bartowski/dolphin-2.9-llama3-8b-GGUF",
+                          filename="dolphin-2.9-llama3-8b-Q4_K_M.gguf",
+                          local_dir="models")
+          EOF
+            mv models/dolphin-2.9-llama3-8b-Q4_K_M.gguf models/dolphin-2.9-llama3-8b.Q4_K_M.gguf 2>/dev/null || true
+          fi
+          ls -lh models/ || true
+
+      - name: 预热插件（MCP + skills 必须先连上，否则不交接）
+        run: |
+          for i in 1 2 3; do
+            OUT=$(python - <<'EOF'
+          from mcp_client import MCPPool
+          p = MCPPool()
+          cat = p.catalog()
+          n = 0 if cat.startswith("（无") else len([l for l in cat.splitlines() if l.strip()])
+          print(f"TOOLS={n}")
+          print(cat)
+          p.close_all()
+          EOF
+            )
+            echo "$OUT"
+            echo "$OUT" | grep -q "TOOLS=0" || break
+            echo "插件还没就绪，60 秒后重试 ($i/3)"
+            sleep 60
+          done
+
+      - name: 标记本棒就绪（插件已热）
+        run: |
+          git config user.name  ai-host
+          git config user.email ai-host@local
+          mkdir -p state
+          echo "$(date -u +%FT%TZ) tools_ready" > state/HANDOVER_READY
+          git add state/HANDOVER_READY
+          git commit -m "ready ${{ github.run_id }}" || true
+          git pull --rebase -q || true
+          git push || true
+          echo "本棒插件已热，可以接班"
+
+      - name: 后台计时器（5h30m 派接班）
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          cat > /tmp/h.sh <<'EOS'
+          sleep 19800
+          curl -s -X POST -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/$REPO/actions/workflows/agent.yml/dispatches" \
+            -d "{\"ref\":\"main\"}"
+          EOS
+          chmod +x /tmp/h.sh
+          nohup /tmp/h.sh > /tmp/h.log 2>&1 &
+          echo 计时器启动
+
+      - name: 干活
+        env:
+          CEREBRAS_KEY: ${{ secrets.CEREBRAS_KEY }}
+          GROQ_KEY: ${{ secrets.GROQ_KEY }}
+          DEEPSEEK_KEY: ${{ secrets.DEEPSEEK_KEY }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+          LLM_BASE: ${{ secrets.LLM_BASE }}
+          LLM_MODEL: ${{ secrets.LLM_MODEL }}
+          AGENT_GOAL: ${{ vars.AGENT_GOAL }}
+        run: python agent.py
+
+      - name: 等接班就绪（最多 45 分钟），就绪即退 —— 空窗 0
+        if: always()
+        run: |
+          git config user.name  ai-host
+          git config user.email ai-host@local
+          for i in $(seq 1 90); do
+            git fetch -q origin || true
+            READY=$(git show origin/$(git rev-parse --abbrev-ref HEAD):state/HANDOVER_READY 2>/dev/null || echo "")
+            MINE=$(cat state/HANDOVER_READY 2>/dev/null || echo "")
+            if [ -n "$READY" ] && [ "$READY" != "$MINE" ]; then
+              echo "接班就绪 $READY，本棒退出"
+              exit 0
+            fi
+            sleep 30
+          done
+          echo "未等到接班，兜底 cron 会拉起"
+
+      - name: 同步现场 + 新工具
+        if: always()
+        run: |
+          git config user.name  ai-host
+          git config user.email ai-host@local
+          git add -A state tools || true
+          git commit -m "state $(date -u +%FT%TZ)" || echo 无变化
+          git pull --rebase -q || true
+          git push || echo 冲突，下轮同步
