@@ -37,6 +37,13 @@ PROVIDERS = [
         "model": os.environ.get("LLM_MODEL") or "",
         "key": os.environ.get("LLM_API_KEY", "").strip(),
     },
+    {
+        # 不需要额外 key：Actions 内置的 GITHUB_TOKEN 就能调，免费额度
+        "name": "github-models",
+        "base": "https://models.github.ai/inference",
+        "model": os.environ.get("GH_MODEL") or "openai/gpt-4o-mini",
+        "key": os.environ.get("GITHUB_TOKEN", "").strip(),
+    },
 ]
 PROVIDERS = [p for p in PROVIDERS if p["key"] and p["base"]]
 
