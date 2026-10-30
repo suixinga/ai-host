@@ -43,20 +43,6 @@ jobs:
           pip -q install playwright requests beautifulsoup4 lxml yt-dlp llama-cpp-python huggingface-hub
           python -m playwright install --with-deps chromium
 
-      - name: 拉无审查大脑（首次约 5 分钟，之后走缓存）
-        run: |
-          mkdir -p models
-          if [ ! -f models/dolphin-2.9-llama3-8b.Q4_K_M.gguf ]; then
-            python - <<'EOF'
-          from huggingface_hub import hf_hub_download
-          hf_hub_download(repo_id="bartowski/dolphin-2.9-llama3-8b-GGUF",
-                          filename="dolphin-2.9-llama3-8b-Q4_K_M.gguf",
-                          local_dir="models")
-          EOF
-            mv models/dolphin-2.9-llama3-8b-Q4_K_M.gguf models/dolphin-2.9-llama3-8b.Q4_K_M.gguf 2>/dev/null || true
-          fi
-          ls -lh models/ || true
-
       - name: 预热插件（MCP + skills 必须先连上，否则不交接）
         run: |
           for i in 1 2 3; do
