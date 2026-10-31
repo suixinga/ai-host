@@ -36,6 +36,15 @@ jobs:
             models
           key: brain-v2-${{ runner.os }}
 
+      - name: 机器规格（实测）
+        run: |
+          echo "=== SPEC ==="
+          echo "CPU 核数: $(nproc)"
+          echo "架构: $(uname -m)"
+          free -h
+          echo "磁盘:"; df -h / | tail -1
+          echo "=== /SPEC ==="
+
       - name: 装手脚（有缓存就 30 秒）
         run: |
           sudo apt-get -qq update
