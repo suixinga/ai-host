@@ -123,13 +123,21 @@ def llm(messages, max_tokens=2048):
                 "temperature": 0.7, "max_tokens": max_tokens,
             }, headers={"Authorization": f"Bearer {p['key']}",
                         "Content-Type": "application/json"})
-            if r.status_code == 429:
-                last = f"{p['name']} 429 限流"
+            if r.status_code != 200:
+                body = (r.text or "")[:400].replace("\n", " ")
+                print(f"[llm] {p['name']} HTTP {r.status_code} :: {body}")
+                last = f"{p['name']} HTTP {r.status_code}"
                 continue
-            r.raise_for_status()
-            return r.json()["choices"][0]["message"]["content"]
+            try:
+                data = r.json()
+            except Exception:
+                print(f"[llm] {p['name']} 非 JSON 响应 :: {(r.text or '')[:400]}")
+                last = f"{p['name']} 非 JSON"
+                continue
+            return data["choices"][0]["message"]["content"]
         except Exception as e:
-            last = f"{p['name']}: {type(e).__name__} {e}"
+            print(f"[llm] {p['name']} 异常 {type(e).__name__}: {e}")
+            last = f"{p['name']}: {type(e).__name__}"
             continue
 
     # 全部云端失败 → 本地模型兜底
