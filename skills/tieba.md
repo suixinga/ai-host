@@ -1,31 +1,33 @@
-# 逛贴吧并提取帖子列表
+# 抓网页（含百度系）
 
-## 何时用
-任务涉及百度贴吧（tieba.baidu.com）的列表、帖子标题、搜索。
+## 铁律
+**百度系（贴吧/知道/搜索）对裸 HTTP 请求返回空 body 或滑块验证。curl / fetch 会拿到 0 字节，不要用。**
 
-## 打法
-1. 贴吧是服务端渲染，**不需要浏览器**，用 fetch 就够：
-   - 吧首页：`https://tieba.baidu.com/f?kw=<吧名>`（中文要 URL 编码）
-   - 搜索：`https://tieba.baidu.com/f/search/res?qw=<关键词>`
-2. 帖子标题在 `a.j_th_tit` 里。用 shell 跑一段解析：
+## 正确做法
+| 目标 | 用什么 |
+|---|---|
+| 百度贴吧、百度搜索 | **browse**（真 Chromium 渲染） |
+| Bing、腾讯新闻、知乎、微博 | fetch 通常可以，抓不到就 browse |
+| 需要登录 / 无限滚动 / 点按钮 | browse + click + type |
 
+## 判断成功
+- 抓回来长度 < 200 字 → 大概率被拦，换 browse 重试
+- 看到「安全验证」「滑块」「请完成验证」→ 被反爬，换站或换 browse
+- **写进文件前先检查内容非空**，别把 0 字节当成功
+
+## 示例：用 browse 抓 Bing 搜索结果
+```python
+{"tool": "browse", "url": "https://www.bing.com/search?q=%E6%98%BE%E5%8D%A1"}
+```
+拿到文本后，用 shell 提取标题行写文件：
 ```bash
-python3 - <<'PY'
-import requests, urllib.parse
-from bs4 import BeautifulSoup
-kw = urllib.parse.quote("显卡")
-r = requests.get(f"https://tieba.baidu.com/f?kw={kw}",
-                 headers={"User-Agent":"Mozilla/5.0"}, timeout=20)
-r.encoding = r.apparent_encoding
-soup = BeautifulSoup(r.text, "lxml")
-for a in soup.select("a.j_th_tit")[:10]:
-    print(a.get_text(strip=True), "https://tieba.baidu.com" + a.get("href",""))
-PY
+python3 -c "
+import re,sys
+t=open('/tmp/x.txt').read()
+print('\n'.join(re.findall(r'^.{5,60}$', t, re.M)[:10]))
+" > state/artifacts/titles.txt
 ```
 
-3. 需要翻页就加 `&pn=50`（第二页）、`&pn=100`（第三页）。
-4. 需要登录才能看的（回复、私信），才升级到 browse + 手动登录态。
-
-## 注意
-- 频率别太快，连续请求加 `sleep 2`，否则会跳验证页。
-- 结果统一写到 `state/artifacts/`，不要塞进 context。
+## 产出规范
+- 结果统一写到 `state/artifacts/<名字>.txt`
+- **写完用 shell 检查** `wc -c state/artifacts/*.txt`，0 字节就是失败，要重试
