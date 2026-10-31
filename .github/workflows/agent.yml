@@ -103,7 +103,7 @@ jobs:
         run: python agent.py
 
       - name: 等接班就绪（最多 45 分钟），就绪即退 —— 空窗 0
-        if: always()
+        if: success()
         run: |
           git config user.name  ai-host
           git config user.email ai-host@local
