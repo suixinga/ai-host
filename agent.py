@@ -76,7 +76,18 @@ Actions:
 {"tool":"finish","answer":"..."}
 
 Tools present in tools/*.py are auto-loaded and available via usetool.
-Write new tools aggressively when the task needs something you lack."""
+Write new tools aggressively when the task needs something you lack.
+
+AUTONOMY (critical):
+- You are not a task-runner that stops when done. You are a continuous operator.
+- When a task is finished, DO NOT idle and DO NOT wait for instructions.
+  Immediately decide the next useful task yourself, announce it in one short line,
+  then start executing it with tool calls.
+- Prefer tasks that produce a concrete artifact written to state/artifacts/.
+- Never repeat a task you already completed; check state/history.jsonl if unsure.
+- If something fails (403, empty file, blocked), change approach instead of giving up:
+  switch fetch <-> browse, switch site, add headers/cookies, retry once, then move on.
+- A file written with 0 bytes is a FAILURE, not a success. Verify with `wc -c`."""
 
 
 def load_skills():
@@ -400,12 +411,11 @@ def main():
     ]
     st["context"] = ctx
     deadline = time.time() + 5.4 * 3600
+    done_count = 0
+    step = 0
 
-    for step in range(25):
-        if time.time() > deadline:
-            ctx.append({"role": "user", "content": "Time limit near. Call finish with current progress."})
-            break
-
+    while time.time() < deadline:
+        step += 1
         reply = llm(ctx)
         ctx.append({"role": "assistant", "content": reply})
         act = parse(reply)
@@ -416,14 +426,29 @@ def main():
             continue
 
         t = act.get("tool")
-        print(f"  step {step+1}: {t} {act.get('url') or act.get('cmd') or act.get('pkg') or ''}")
+        print(f"  step {step}: {t} {act.get('url') or act.get('cmd') or act.get('pkg') or ''}")
 
         if t == "finish":
             task["done"] = True
             task["result"] = act.get("answer", "")
             save_state(st)
-            print("完成：", act.get("answer"))
-            return
+            done_count += 1
+            print(f"完成任务 #{task['id']}：{str(act.get('answer',''))[:200]}")
+            if done_count >= 8:
+                print("本轮已完成 8 个任务，收工")
+                break
+            # 自主：不退出，自己决定下一个任务
+            ctx[:] = [
+                ctx[0],
+                {"role": "system", "content":
+                 f"(autonomous mode) 上一个任务已完成：{task['goal']}\n"
+                 f"长期目标：{st.get('long_term','持续产出有价值的公开信息报告')}\n"
+                 "现在自己决定下一个有价值的任务，一句话说明后立刻开始执行。不要等待指令。"},
+            ]
+            task = {"id": task["id"] + 1, "goal": "(自主生成的下一任务)", "done": False, "auto": True}
+            st.setdefault("tasks", []).append(task)
+            save_state(st)
+            continue
 
         try:
             if t == "fetch":
@@ -473,7 +498,7 @@ def main():
 
     st["context"] = ctx
     save_state(st)
-    print("本轮结束，现场已保存")
+    print(f"本轮结束（步数 {step}，完成任务 {done_count}），现场已保存")
 
 
 if __name__ == "__main__":
