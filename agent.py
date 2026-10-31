@@ -420,22 +420,22 @@ def main():
         st["self"]["born"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
 
     from mcp_client import MCPPool
+    from memory import Memory
+    mem = Memory()
     pool = MCPPool()
     skills = load_skills()
     backend = "本地模型" if os.path.exists(MODEL_PATH) else "API"
-    print(f"[后端] {backend}  出生：{st['self']['born']}  已有笔记 {len(st['notes'])} 条")
+    print(f"[后端] {backend}  出生：{st['self']['born']}")
     print(f"[Skills] {', '.join(skills) or '无'}")
+    print(f"[身份] {mem.identity().splitlines()[0][:60]}")
 
     if not st.get("context"):
         seed = os.environ.get("AGENT_GOAL", "").strip()
-        opening = (
-            "你刚醒来。这是你这次上线后的第一个念头。\n"
-            + (f"你还记得一个未完成的念头：{seed}\n" if seed else "")
-            + "现在你想干点什么？"
-        )
+        sysmsg = build_system(pool, skills) + "\n\n" + mem.system_block(seed)
         st["context"] = [
-            {"role": "system", "content": build_system(pool, skills)},
-            {"role": "user", "content": opening},
+            {"role": "system", "content": sysmsg},
+            {"role": "user", "content": ("你刚醒来。还记着一个没做完的念头：" + seed + "\n现在你想干点什么？")
+                                       if seed else "你刚醒来。现在想干点什么？"},
         ]
     ctx = st["context"]
 
@@ -480,6 +480,19 @@ def main():
             save_state(st)
             continue
 
+        if t == "identity":
+            obs = mem.set_identity(act.get("text", ""))
+            mem.remember("identity", "我更新了对自己的描述")
+            ctx.append({"role": "user", "content": f"Observation:\n{obs}"})
+            save_state(st)
+            continue
+
+        if t == "learn":
+            obs = mem.learn(act.get("topic", "general"), act.get("fact", ""))
+            ctx.append({"role": "user", "content": f"Observation:\n{obs}"})
+            save_state(st)
+            continue
+
         try:
             if t == "fetch":
                 obs = tool_fetch(act["url"])
@@ -512,17 +525,12 @@ def main():
 
         ctx.append({"role": "user", "content": f"Observation:\n{obs[:5000]}"})
 
-        # 记忆只归档、不丢弃 —— 早期历史进 history.jsonl，可 grep 检索
-        if len(ctx) > 120:
-            archived = ctx[1:-40]
-            os.makedirs("state", exist_ok=True)
-            with open("state/history.jsonl", "a", encoding="utf-8") as hf:
-                for m in archived:
-                    hf.write(json.dumps(m, ensure_ascii=False) + "\n")
-            ctx = ctx[:1] + [{
-                "role": "system",
-                "content": "(earlier history archived to state/history.jsonl; use shell: grep <keyword> state/history.jsonl to recall anything)",
-            }] + ctx[-40:]
+        # 记忆：记事件 + 压缩旧轮次，保持工作记忆恒定
+        mem.remember("action", f"{t} {str(act.get('url') or act.get('cmd') or act.get('text') or '')[:200]} → {obs[:200]}")
+        try:
+            ctx = mem.compress(ctx, llm)
+        except Exception as e:
+            print(f"[mem] 压缩失败 {e}")
         st["context"] = ctx
         save_state(st)
 
