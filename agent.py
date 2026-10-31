@@ -44,8 +44,16 @@ PROVIDERS = [
         "model": os.environ.get("GH_MODEL") or "openai/gpt-4o-mini",
         "key": os.environ.get("GITHUB_TOKEN", "").strip(),
     },
+    {
+        # 完全免费、无需 key 的兜底（公共限流约 45 秒/次）
+        "name": "pollinations",
+        "base": "https://text.pollinations.ai/openai",
+        "model": os.environ.get("POLL_MODEL") or "openai",
+        "key": "",
+        "noauth": True,
+    },
 ]
-PROVIDERS = [p for p in PROVIDERS if p["key"] and p["base"]]
+PROVIDERS = [p for p in PROVIDERS if p["base"] and (p.get("noauth") or p["key"])]
 
 STATE = "state/agent.json"
 STORE = "state/artifacts"
@@ -117,28 +125,40 @@ def llm(messages, max_tokens=2048):
     import requests
     last = None
     for p in PROVIDERS:
-        try:
-            r = requests.post(f"{p['base']}/chat/completions", timeout=180, json={
-                "model": p["model"], "messages": messages,
-                "temperature": 0.7, "max_tokens": max_tokens,
-            }, headers={"Authorization": f"Bearer {p['key']}",
-                        "Content-Type": "application/json"})
-            if r.status_code != 200:
-                body = (r.text or "")[:400].replace("\n", " ")
-                print(f"[llm] {p['name']} HTTP {r.status_code} :: {body}")
-                last = f"{p['name']} HTTP {r.status_code}"
-                continue
+        for attempt in range(2):
             try:
-                data = r.json()
-            except Exception:
-                print(f"[llm] {p['name']} 非 JSON 响应 :: {(r.text or '')[:400]}")
-                last = f"{p['name']} 非 JSON"
-                continue
-            return data["choices"][0]["message"]["content"]
-        except Exception as e:
-            print(f"[llm] {p['name']} 异常 {type(e).__name__}: {e}")
-            last = f"{p['name']}: {type(e).__name__}"
-            continue
+                headers = {"Content-Type": "application/json"}
+                if p.get("key"):
+                    headers["Authorization"] = f"Bearer {p['key']}"
+                r = requests.post(f"{p['base']}/chat/completions", timeout=90, json={
+                    "model": p["model"], "messages": messages,
+                    "temperature": 0.7, "max_tokens": max_tokens,
+                }, headers=headers)
+                if r.status_code in (402, 429):
+                    # 公共免费源限流：等一轮再试一次
+                    print(f"[llm] {p['name']} {r.status_code} 限流，等 50 秒")
+                    time.sleep(50)
+                    continue
+                if r.status_code != 200:
+                    body = (r.text or "")[:300].replace("\n", " ")
+                    print(f"[llm] {p['name']} HTTP {r.status_code} :: {body}")
+                    last = f"{p['name']} HTTP {r.status_code}"
+                    break
+                try:
+                    data = r.json()
+                except Exception:
+                    print(f"[llm] {p['name']} 非 JSON 响应 :: {(r.text or '')[:300]}")
+                    last = f"{p['name']} 非 JSON"
+                    break
+                content = data["choices"][0]["message"]["content"]
+                if content:
+                    return content
+                last = f"{p['name']} 空内容"
+                break
+            except Exception as e:
+                print(f"[llm] {p['name']} 异常 {type(e).__name__}: {e}")
+                last = f"{p['name']}: {type(e).__name__}"
+                break
 
     # 全部云端失败 → 本地模型兜底
     global _llm
