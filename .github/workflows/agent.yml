@@ -130,29 +130,12 @@ jobs:
           AGENT_GOAL: ${{ vars.AGENT_GOAL }}
         run: python agent.py
 
-      - name: 等接班就绪（最多 45 分钟），就绪即退 —— 空窗 0
-        if: success()
-        run: |
-          git config user.name  ai-host
-          git config user.email ai-host@local
-          for i in $(seq 1 90); do
-            git fetch -q origin || true
-            READY=$(git show origin/$(git rev-parse --abbrev-ref HEAD):state/HANDOVER_READY 2>/dev/null || echo "")
-            MINE=$(cat state/HANDOVER_READY 2>/dev/null || echo "")
-            if [ -n "$READY" ] && [ "$READY" != "$MINE" ]; then
-              echo "接班就绪 $READY，本棒退出"
-              exit 0
-            fi
-            sleep 30
-          done
-          echo "未等到接班，兜底 cron 会拉起"
-
-      - name: 同步现场 + 新工具
+      - name: 同步现场 + 新工具（产出落地）
         if: always()
         run: |
           git config user.name  ai-host
           git config user.email ai-host@local
           git add -A state tools || true
-          git commit -m "state $(date -u +%FT%TZ)" || echo 无变化
+          git commit -m "state $(date -u +%FT%TZ) run ${{ github.run_id }}" || echo 无变化
           git pull --rebase -q || true
           git push || echo 冲突，下轮同步
