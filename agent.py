@@ -150,9 +150,11 @@ def llm(messages, max_tokens=2048):
                     print(f"[llm] {p['name']} 非 JSON 响应 :: {(r.text or '')[:300]}")
                     last = f"{p['name']} 非 JSON"
                     break
-                content = data["choices"][0]["message"]["content"]
+                msg = (data.get("choices") or [{}])[0].get("message") or {}
+                content = msg.get("content") or msg.get("reasoning") or ""
                 if content:
                     return content
+                print(f"[llm] {p['name']} 空内容 :: {json.dumps(data, ensure_ascii=False)[:300]}")
                 last = f"{p['name']} 空内容"
                 break
             except Exception as e:
@@ -403,7 +405,7 @@ def main():
     st["context"] = ctx
     deadline = time.time() + 5.4 * 3600
 
-    for step in range(80):
+    for step in range(25):
         if time.time() > deadline:
             ctx.append({"role": "user", "content": "Time limit near. Call finish with current progress."})
             break
