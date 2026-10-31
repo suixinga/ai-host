@@ -167,15 +167,6 @@ def llm(messages, max_tokens=1024):
                 last = f"{p['name']}: {type(e).__name__}"
                 break
 
-    # 全部云端失败 → 本地模型兜底
-    global _llm
-    if os.path.exists(MODEL_PATH):
-        from llama_cpp import Llama
-        if _llm is None:
-            _llm = Llama(model_path=MODEL_PATH, n_ctx=8192, n_threads=2, verbose=False)
-        out = _llm.create_chat_completion(messages=messages, max_tokens=max_tokens, temperature=0.7)
-        return out["choices"][0]["message"]["content"]
-
     raise RuntimeError(f"所有后端都失败：{last}")
 
 
