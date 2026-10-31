@@ -49,8 +49,27 @@ jobs:
         run: |
           sudo apt-get -qq update
           sudo apt-get -qq install -y ffmpeg aria2 jq
-          pip -q install playwright requests beautifulsoup4 lxml yt-dlp llama-cpp-python huggingface-hub
+          pip -q install playwright requests beautifulsoup4 lxml yt-dlp huggingface-hub
+          # 预编译 CPU wheel，避免在 CI 上现编 llama.cpp（要十几分钟）
+          pip -q install llama-cpp-python --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
           python -m playwright install --with-deps chromium
+
+      - name: 拉无审查大脑（本地跑，不需要任何 API key）
+        timeout-minutes: 20
+        run: |
+          mkdir -p models
+          if [ ! -f models/brain.gguf ]; then
+            python - <<'EOF'
+          from huggingface_hub import hf_hub_download
+          p = hf_hub_download(
+              repo_id="bartowski/dolphin-2.9-llama3-8b-GGUF",
+              filename="dolphin-2.9-llama3-8b-Q4_K_M.gguf",
+              local_dir="models")
+          import os, shutil
+          shutil.move(p, "models/brain.gguf")
+          EOF
+          fi
+          ls -lh models/
 
       - name: 预热插件（MCP + skills 必须先连上，否则不交接）
         run: |
