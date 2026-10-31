@@ -8,7 +8,7 @@ import os, sys, json, time, glob, subprocess, importlib.util, hashlib
 
 os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
-MODEL_PATH = os.environ.get("MODEL_PATH", "models/dolphin-2.9-llama3-8b.Q4_K_M.gguf")
+MODEL_PATH = os.environ.get("MODEL_PATH", "models/brain.gguf")
 
 # 云端大模型，按顺序尝试，任何一路限流/报错自动切下一路
 # 填了哪个 key 就用哪个；一个都没填才回落到本地模型
@@ -114,7 +114,19 @@ _browser = None
 
 
 # ---------- 大脑 ----------
-def llm(messages, max_tokens=2048):
+def llm(messages, max_tokens=1024):
+    global _llm
+    # 本地模型优先：存在就用，不外呼、不限流、无审查
+    if os.path.exists(MODEL_PATH):
+        from llama_cpp import Llama
+        if _llm is None:
+            print(f"[llm] 加载本地模型 {MODEL_PATH} (4 线程)")
+            _llm = Llama(model_path=MODEL_PATH, n_ctx=8192, n_threads=4,
+                         n_batch=512, verbose=False)
+        out = _llm.create_chat_completion(
+            messages=messages, max_tokens=max_tokens, temperature=0.7)
+        return out["choices"][0]["message"]["content"]
+
     import requests
     last = None
     for p in PROVIDERS:
