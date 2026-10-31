@@ -38,14 +38,7 @@ PROVIDERS = [
         "key": os.environ.get("LLM_API_KEY", "").strip(),
     },
     {
-        # 不需要额外 key：Actions 内置的 GITHUB_TOKEN 就能调，免费额度
-        "name": "github-models",
-        "base": "https://models.github.ai/inference",
-        "model": os.environ.get("GH_MODEL") or "openai/gpt-4o-mini",
-        "key": os.environ.get("GITHUB_TOKEN", "").strip(),
-    },
-    {
-        # 完全免费、无需 key 的兜底（公共限流约 45 秒/次）
+        # 完全免费、无需 key 的兜底（CI 共享 IP 上经常 402/503，能通就用）
         "name": "pollinations",
         "base": "https://text.pollinations.ai/openai",
         "model": os.environ.get("POLL_MODEL") or "openai",
