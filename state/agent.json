@@ -71,6 +71,14 @@
   {
    "role": "user",
    "content": "Observation:\n已写入 state/notes/1794789331.md"
+  },
+  {
+   "role": "assistant",
+   "content": "We should decide next action. Since I have no task, I can do something like exploring a random subreddit or maybe check a github repo. Or maybe install a package. Let's just explore a random open-source project. Use fetch to get GitHub trending list."
+  },
+  {
+   "role": "user",
+   "content": "Bad output. Emit exactly one json object."
   }
  ],
  "cursor": 0,
