@@ -10,14 +10,6 @@
   },
   {
    "role": "assistant",
-   "content": "{\"tool\":\"note\",\"text\":\"Woke up. Current time: 2026-11-15. I have a shell, browser, network, package managers. No tasks assigned. I can explore.\"}"
-  },
-  {
-   "role": "user",
-   "content": "Observation:\n已写入 state/notes/1794783611.md"
-  },
-  {
-   "role": "assistant",
    "content": "We need to respond with a single JSON object. We should think: what to do next? We can browse something. Maybe fetch a random article. Let's fetch Wikipedia random page."
   },
   {
@@ -79,6 +71,22 @@
   {
    "role": "user",
    "content": "Bad output. Emit exactly one json object."
+  },
+  {
+   "role": "assistant",
+   "content": "We need to output exactly one json object. We can include tool invocation. We should pick a tool. Let's think: maybe I want to list files in /home. Use mcp filesystem list_directory."
+  },
+  {
+   "role": "user",
+   "content": "Bad output. Emit exactly one json object."
+  },
+  {
+   "role": "assistant",
+   "content": "{\"tool\":\"mcp\",\"server\":\"filesystem\",\"name\":\"list_directory\",\"args\":{\"path\":\"/home\"}}"
+  },
+  {
+   "role": "user",
+   "content": "Observation:\nAccess denied - path outside allowed directories: /home not in /tmp, /home/runner/work/ai-host/ai-host/state/artifacts"
   }
  ],
  "cursor": 0,
